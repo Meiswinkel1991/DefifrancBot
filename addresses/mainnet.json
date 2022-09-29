@@ -1,0 +1,14 @@
+{
+  "chainId": 1,
+  "addresses": {
+    "troveManager": "0x99838142189adE67c1951f9c57c3333281334F7F",
+    "priceFeed": "0x09AB3C0ce6Cb41C13343879A667a6bDAd65ee9DA",
+    "multiTroveGetter": "0xD4EcC372E99daBDbc0faBE02d2515a24388fACcA",
+    "TroveManagerHelpers": "0xaAACB8C39Bd5Acbb0A236112Df8d15411161e518",
+    "DfrancParameters": ""
+  },
+  "chainLinkPriceFeed": {
+    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599": "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c",
+    "0x0000000000000000000000000000000000000000": "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+  }
+}
