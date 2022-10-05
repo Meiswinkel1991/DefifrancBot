@@ -67,48 +67,63 @@ async function main() {
     "0x0000000000000000000000000000000000000000": zero, //ETH
   };
 
-  priceFeed.on("LastGoodPriceUpdated", async (address, price) => {
-    log(`new price from pricefeed: ${price} for ${address}`, "green");
-    if (lastPrice[address].gt(price)) {
-      log(`token address: ${address}`, "green");
-      log(
-        `price: ${ethers.utils.formatEther(
-          price
-        )} is lower than ${ethers.utils.formatEther(lastPrice[address])}`,
-        "green"
-      );
+  const liquidationPrice = {
+    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599": zero, //wBTC
+    "0x0000000000000000000000000000000000000000": zero, //ETH
+  };
 
-      //If new price is lower than the last price
-      // check all troves for the new Current ICR
-      await checkColletaral(
-        multiTroveGetter,
-        troveManager,
-        troveManagerHelpers,
-        price,
-        address
-      );
-    }
+  const troves = {
+    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599": [], //wBTC
+    "0x0000000000000000000000000000000000000000": [], //ETH
+  };
 
-    lastPrice[address] = price;
-  });
+  // priceFeed.on("LastGoodPriceUpdated", async (address, price) => {
+  //   log(`new price from pricefeed: ${price} for ${address}`, "green");
+  //   if (lastPrice[address].gt(price)) {
+  //     log(`token address: ${address}`, "green");
+  //     log(
+  //       `price: ${ethers.utils.formatEther(
+  //         price
+  //       )} is lower than ${ethers.utils.formatEther(lastPrice[address])}`,
+  //       "green"
+  //     );
+
+  //     //If new price is lower than the last price
+  //     // check all troves for the new Current ICR
+  //     await checkColletaral(
+  //       multiTroveGetter,
+  //       troveManager,
+  //       troveManagerHelpers,
+  //       price,
+  //       address
+  //     );
+  //   }
+
+  //   lastPrice[address] = price;
+  // });
 
   console.log("");
   console.log(colors.custom(`====== DefiFranc BOT ======`));
   console.log("");
   log("-----------------------------", "blue");
   log("Starting with Chainlink price...", "blue");
-  for (address in lastPrice) {
+
+  for (address in liquidationPrice) {
     log(`Check ChainLink Price for ${address}`, "green");
     const _chainLinkPrice = await getChainLinkPrice(signer, address);
     log(`Last Price is ${_chainLinkPrice}`, "green");
-    await checkColletaral(
-      multiTroveGetter,
+    troves[address] = await multiTroveGetter.getMultipleSortedTroves(
+      address,
+      -1,
+      50
+    );
+    liquidationPrice[address] = await checkColletaral(
+      troves[address],
       troveManager,
       troveManagerHelpers,
       ethers.utils.parseEther(_chainLinkPrice),
       address
     );
-    lastPrice[address] = ethers.utils.parseEther(_chainLinkPrice);
   }
 
   // const clPrice = await getChainLinkPrice(signer, address);
@@ -121,6 +136,18 @@ async function main() {
   // log(`Last Price: ${lastPrice}`, "green");
   log("-----------------------------", "blue");
   log("Starting looking for event...", "blue");
+
+  setInterval(
+    async () =>
+      await checkToLiquidate(
+        signer,
+        liquidationPrice,
+        troves,
+        troveManager,
+        troveManagerHelpers
+      ),
+    10000
+  );
 }
 
 // We recommend this pattern to be able to use async/await everywhere
@@ -138,19 +165,14 @@ function log(message, color) {
 }
 
 const checkColletaral = async (
-  multiTroveGetter,
+  troves,
   troveManager,
   troveManagerHelpers,
   currentPrice,
   address
 ) => {
+  let liquidationPrice;
   try {
-    const troves = await multiTroveGetter.getMultipleSortedTroves(
-      address,
-      -1,
-      50
-    );
-
     // const icr = await troveManagerHelpers.getCurrentICR(
     //   address,
     //   troves[0].owner,
@@ -170,7 +192,12 @@ const checkColletaral = async (
         const icrNumber = parseFloat(ethers.utils.formatEther(icr));
         log(`current ICR: ${icrNumber}`, "red");
         if (icrNumber >= 1.1) {
-          log("No Troves can be liquidate...");
+          if (liquidateTroves.length === 0) {
+            log("No Troves can be liquidate...");
+          }
+          liquidationPrice =
+            (parseFloat(ethers.utils.formatEther(currentPrice)) * 1.1) /
+            icrNumber;
           break;
         }
         liquidateTroves.push(trove);
@@ -192,7 +219,9 @@ const checkColletaral = async (
           log("Succesfull liquidate trove(s)...", "green");
         }
       }
+      log(`Actual liquidation price is ${liquidationPrice}`);
     }
+    return liquidationPrice;
   } catch (e) {
     log(`error: ${e}`);
   }
@@ -215,3 +244,25 @@ const getChainLinkPrice = async (signer, address) => {
 
   return _price.toString();
 };
+
+async function checkToLiquidate(
+  signer,
+  liquidationPrice,
+  troves,
+  troveManager,
+  troveManagerHelpers
+) {
+  for (address in liquidationPrice) {
+    const _price = await getChainLinkPrice(signer, address);
+
+    if (parseFloat(_price) <= liquidationPrice[address]) {
+      await checkColletaral(
+        troves[address],
+        troveManager,
+        troveManagerHelpers,
+        ethers.utils.parseEther(_price),
+        address
+      );
+    }
+  }
+}
