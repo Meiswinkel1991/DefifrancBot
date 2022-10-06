@@ -77,30 +77,9 @@ async function main() {
     "0x0000000000000000000000000000000000000000": [], //ETH
   };
 
-  // priceFeed.on("LastGoodPriceUpdated", async (address, price) => {
-  //   log(`new price from pricefeed: ${price} for ${address}`, "green");
-  //   if (lastPrice[address].gt(price)) {
-  //     log(`token address: ${address}`, "green");
-  //     log(
-  //       `price: ${ethers.utils.formatEther(
-  //         price
-  //       )} is lower than ${ethers.utils.formatEther(lastPrice[address])}`,
-  //       "green"
-  //     );
-
-  //     //If new price is lower than the last price
-  //     // check all troves for the new Current ICR
-  //     await checkColletaral(
-  //       multiTroveGetter,
-  //       troveManager,
-  //       troveManagerHelpers,
-  //       price,
-  //       address
-  //     );
-  //   }
-
-  //   lastPrice[address] = price;
-  // });
+  troveManagerHelpers.on("TroveIndexUpdated", (info, borrower, index) => {
+    log(`Trove Index updated ${info} ${borrower}`, "blue");
+  });
 
   console.log("");
   console.log(colors.custom(`====== DefiFranc BOT ======`));
@@ -137,17 +116,47 @@ async function main() {
   log("-----------------------------", "blue");
   log("Starting looking for event...", "blue");
 
-  setInterval(
-    async () =>
-      await checkToLiquidate(
-        signer,
-        liquidationPrice,
-        troves,
+  // setInterval(
+  //   async () =>
+  //     await checkToLiquidate(
+  //       signer,
+  //       liquidationPrice,
+  //       troves,
+  //       troveManager,
+  //       troveManagerHelpers
+  //     ),
+  //   10000
+  // );
+
+  priceFeed.on("LastGoodPriceUpdated", async (address, price) => {
+    log(`new price from pricefeed: ${price} for ${address}`, "green");
+    log(`Liquidation Price ${liquidationPrice[address]}`, "red");
+    if (liquidationPrice[address].lt(price)) {
+      log(`token address: ${address}`, "green");
+      log(
+        `price: ${ethers.utils.formatEther(
+          price
+        )} is greater than ${ethers.utils.formatEther(
+          liquidationPrice[address]
+        )}`,
+        "green"
+      );
+      troves[address] = await multiTroveGetter.getMultipleSortedTroves(
+        address,
+        -1,
+        50
+      );
+      //If new price is lower than the last price
+      // check all troves for the new Current ICR
+      liquidationPrice[address] = await checkColletaral(
+        troves[address],
         troveManager,
-        troveManagerHelpers
-      ),
-    10000
-  );
+        troveManagerHelpers,
+        price,
+        address
+      );
+    }
+  });
 }
 
 // We recommend this pattern to be able to use async/await everywhere
@@ -221,7 +230,7 @@ const checkColletaral = async (
       }
       log(`Actual liquidation price is ${liquidationPrice}`);
     }
-    return liquidationPrice;
+    return ethers.utils.parseEther(liquidationPrice.toString());
   } catch (e) {
     log(`error: ${e}`);
   }
