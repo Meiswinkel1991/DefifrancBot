@@ -27,7 +27,7 @@ async function main() {
     "mainnet"
   );
 
-  // get all needed contracts for the bot
+  /** Smart Contracts */
 
   //priceFeed for listening to new ETH price
   const priceFeedAddress = mainnetData.addresses["priceFeed"];
@@ -61,6 +61,8 @@ async function main() {
     troveManagerHelpersAddress
   );
 
+  /** State Variables */
+
   const zero = ethers.BigNumber.from("0");
   const lastPrice = {
     "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599": zero, //wBTC
@@ -77,10 +79,11 @@ async function main() {
     "0x0000000000000000000000000000000000000000": [], //ETH
   };
 
-  troveManagerHelpers.on("TroveIndexUpdated", (info, borrower, index) => {
-    log(`Trove Index updated ${info} ${borrower}`, "blue");
-  });
+  // Check if interval is ongoing
+  let interval = false;
+  let intervalPriceCheck;
 
+  /** Start Bot */
   console.log("");
   console.log(colors.custom(`====== DefiFranc BOT ======`));
   console.log("");
@@ -105,28 +108,10 @@ async function main() {
     );
   }
 
-  // const clPrice = await getChainLinkPrice(signer, address);
-  // await checkColletaral(
-  //   multiTroveGetter,
-  //   troveManager,
-  //   ethers.utils.parseEther(clPrice)
-  // );
-  // lastPrice = ethers.utils.parseEther(clPrice);
-  // log(`Last Price: ${lastPrice}`, "green");
   log("-----------------------------", "blue");
   log("Starting looking for event...", "blue");
 
-  // setInterval(
-  //   async () =>
-  //     await checkToLiquidate(
-  //       signer,
-  //       liquidationPrice,
-  //       troves,
-  //       troveManager,
-  //       troveManagerHelpers
-  //     ),
-  //   10000
-  // );
+  /** Event Listeners */
 
   priceFeed.on("LastGoodPriceUpdated", async (address, price) => {
     log(`new price from pricefeed: ${price} for ${address}`, "green");
@@ -155,7 +140,52 @@ async function main() {
         price,
         address
       );
+
+      const icr = await troveManagerHelpers.getCurrentICR(
+        address,
+        troves[address][0].owner,
+        price
+      );
+
+      if (icr <= 1.13) {
+        if (!interval) {
+          intervalPriceCheck = setInterval(
+            async () =>
+              await checkToLiquidate(
+                signer,
+                liquidationPrice,
+                troves,
+                troveManager,
+                troveManagerHelpers
+              ),
+            10000
+          );
+          interval = true;
+        }
+      } else {
+        if (interval) {
+          clearInterval(intervalPriceCheck);
+          interval = false;
+        }
+      }
     }
+  });
+
+  troveManagerHelpers.on("TroveIndexUpdated", async (address) => {
+    log(`Trove Index updated for ${address} `, "blue");
+    troves[address] = await multiTroveGetter.getMultipleSortedTroves(
+      address,
+      -1,
+      50
+    );
+    const _price = await getChainLinkPrice(signer, address);
+    liquidationPrice[address] = await checkColletaral(
+      troves[address],
+      troveManager,
+      troveManagerHelpers,
+      ethers.utils.parseEther(_price),
+      address
+    );
   });
 }
 
