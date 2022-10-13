@@ -147,7 +147,7 @@ async function main() {
         price
       );
 
-      if (icr <= 1.13) {
+      if (parseFloat(ethers.utils.formatEther(icr)) <= 1.15) {
         if (!interval) {
           intervalPriceCheck = setInterval(
             async () =>
@@ -158,7 +158,7 @@ async function main() {
                 troveManager,
                 troveManagerHelpers
               ),
-            10000
+            50000
           );
           interval = true;
         }
